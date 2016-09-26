@@ -2,17 +2,14 @@ import org.scalatest.{Matchers, WordSpec}
 
 class JsonSchemaEncoderSpec extends WordSpec with Matchers {
 
-  import shapeless._
+  def createSchema[A](value: A)(implicit encoder: JsonSchemaEncoder[A]): Json =
+    encoder.encode(value)
 
-  it when {
+  "JsonSchemaEncoder" when {
     "creating schema for strings" should {
       "generate simple example" in {
-        // given
-        val generic = Generic[SingleString]
-        val encoder = implicitly[JsonSchemaEncoder[generic.Repr]]
-
         // when
-        val schema = encoder.encode(generic.to(SingleString("Bar")))
+        val schema = createSchema(SingleString("Bar"))
 
         // then
         Json.stringify(schema) shouldBe """{"type": "object", "properties": {"foo": {"type": "string"}}}"""

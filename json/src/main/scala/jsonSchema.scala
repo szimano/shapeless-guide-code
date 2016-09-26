@@ -1,20 +1,30 @@
-import shapeless.{:+:, ::, CNil, Coproduct, Generic, HList, HNil, Inl, Inr, Lazy, Witness}
+import shapeless.{HList, ::, HNil}
+import shapeless.{Coproduct, :+:, CNil, Inl, Inr}
+import shapeless.{Lazy}
+import shapeless.{LabelledGeneric, Witness}
+import shapeless.labelled.FieldType
 
 trait JsonSchemaEncoder[A] {
   def encode(a: A): Json
 }
 
 object JsonSchemaEncoder {
-  def createEncoder[A](enc: A => Json) =
+  def pure[A](enc: A => Json) =
     new JsonSchemaEncoder[A] {
       override def encode(a: A) = enc(a)
     }
 
-  implicit def intEncoder: JsonSchemaEncoder[Int] = createEncoder(i => JsonObject(List(("type", JsonString("number")))))
-  implicit def stringEncoder: JsonSchemaEncoder[String] = createEncoder(s => JsonObject(List(("type", JsonString("string")))))
-  implicit def boolEncoder: JsonSchemaEncoder[Boolean] = createEncoder(b => JsonObject(List(("type", JsonString("boolean")))))
+  def pureObj[A](func: A => JsonObject): JsonObjectEncoder[A] =
+    new JsonObjectEncoder[A] {
+      def encode(value: A): JsonObject =
+        func(value)
+    }
 
-  implicit val hnilEncoder: JsonSchemaEncoder[HNil] = createEncoder(hnil => JsonNull)
+  implicit def intEncoder: JsonSchemaEncoder[Int] = pure(i => JsonObject(List(("type", JsonString("number")))))
+  implicit def stringEncoder: JsonSchemaEncoder[String] = pure(s => JsonObject(List(("type", JsonString("string")))))
+  implicit def boolEncoder: JsonSchemaEncoder[Boolean] = pure(b => JsonObject(List(("type", JsonString("boolean")))))
+
+  implicit val hnilEncoder: JsonSchemaEncoder[HNil] = pure(hnil => JsonNull)
 
   implicit def hlistEncoder[K <: Symbol, H, T <: HList](
                                             implicit
@@ -22,51 +32,48 @@ object JsonSchemaEncoder {
                                             hEncoder: Lazy[JsonSchemaEncoder[H]],
                                             tEncoder: JsonObjectEncoder[T]
                                           ): JsonSchemaEncoder[H :: T] =
-    createEncoder {
+    pure {
       case h :: t =>
         val hField  = witness.value.name -> hEncoder.value.encode(h)
         val tFields = tEncoder.encode(t).fields
         JsonObject(hField :: tFields)
     }
 
-  implicit val cnilEncoder: JsonSchemaEncoder[CNil] =
-    createEncoder(cnil => ???)
+  implicit val cnilEncoder: JsonObjectEncoder[CNil] =
+    pureObj(cnil => ???)
 
   implicit def coproductEncoder[K <: Symbol, H, T <: Coproduct](
                                                     implicit
                                                     witness: Witness.Aux[K],
                                                     hEncoder: Lazy[JsonSchemaEncoder[H]],
-                                                    tEncoder: JsonSchemaEncoder[T]
-                                                  ): JsonSchemaEncoder[H :+: T] =
-    createEncoder {
+                                                    tEncoder: JsonObjectEncoder[T]
+                                                  ): JsonObjectEncoder[FieldType[K, H] :+: T] =
+    pureObj {
       case Inl(h) => JsonObject(List(witness.value.name -> hEncoder.value.encode(h)))
       case Inr(t) => tEncoder.encode(t)
     }
 
   implicit def genericEncoder[A, R](
                                      implicit
-                                     gen: Generic.Aux[A, R],
-                                     enc: Lazy[JsonSchemaEncoder[R]]
+                                     gen: LabelledGeneric.Aux[A, R],
+                                     enc: Lazy[JsonEncoder[R]]
                                    ): JsonSchemaEncoder[A] =
-    createEncoder(a => enc.value.encode(gen.to(a)))
+    pure(a => enc.value.encode(gen.to(a)))
 }
 
-sealed trait Sml {
-  def name: String
-}
 
-case class Tomek(name: String) extends Sml
+object MainSchema extends Demo {
 
-case class Adam(name: String) extends Sml
+  def createSchema[A](value: A)(implicit encoder: JsonSchemaEncoder[A]): Json =
+    encoder.encode(value)
 
-case class Witold(name: String, wiek: Int, madry: Boolean) extends Sml
+  sealed trait Sml {
+    def name: String
+  }
 
-import shapeless._
+  final case class Tomek(name: String) extends Sml
+  final case class Adam(name: String) extends Sml
+  final case class Witold(name: String, wiek: Int, madry: Boolean) extends Sml
 
-object MainSchema extends App {
-  val smlowiec = Generic[Sml]
-  implicit val encoder = implicitly[JsonSchemaEncoder[smlowiec.Repr]]
-  val tomek = smlowiec.to(Tomek("Domek"))
-  println(encoder.encode(tomek))
-  println(encoder.encode(smlowiec.to(Witold("witold", 23, false))))
+  println(Json.stringify(createSchema(Tomek("tomek"))))
 }
