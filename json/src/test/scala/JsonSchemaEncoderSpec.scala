@@ -2,7 +2,7 @@ import org.scalatest.{Matchers, WordSpec}
 
 class JsonSchemaEncoderSpec extends WordSpec with Matchers {
 
-  def createSchema[A](value: A)(implicit encoder: JsonSchemaEncoder[A]): Json =
+  def createSchema[A](value: A)(implicit encoder: JsonSchemaEncoder[A]): List[JsonSchemaField] =
     encoder.encode(value)
 
   "JsonSchemaEncoder" when {
@@ -12,7 +12,13 @@ class JsonSchemaEncoderSpec extends WordSpec with Matchers {
         val schema = createSchema(SingleString("Bar"))
 
         // then
-        Json.stringify(schema) shouldBe """{"type": "object", "properties": {"foo": {"type": "string"}}}"""
+        val schemaStringified = JsonSchemaSerializer.stringify(schema)
+        schemaStringified shouldBe """{
+                                     | "type": "object",
+                                     | "properties": {
+                                     |   "foo": {"type": "string"}
+                                     | }
+                                     |}""".stripMargin
       }
     }
   }
